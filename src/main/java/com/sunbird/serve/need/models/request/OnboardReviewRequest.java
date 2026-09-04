@@ -12,5 +12,5 @@ import lombok.NoArgsConstructor;
 public class OnboardReviewRequest {
     private String action; // Authorise, Clarification, Reject
     private String notes;
-    private String userId; // Required for Authorise — the serve osid from RC/volunteering service
+    private String userId; // Required for Authorise — the RC user osid, provided by UI after creating the user in volunteering service
 }

@@ -90,14 +90,26 @@ public class OnboardService {
     }
 
     /**
-     * List onboarding requests for nAdmin review (agency-scoped).
+     * List onboarding requests for review.
+     * sAdmin has no agencyId (platform-wide) → returns all requests, optionally filtered by status.
+     * nAdmin is agency-scoped → filters by their agencyId.
      */
     public Page<EntityOnboard> getOnboardRequests(String agencyId, OnboardRequestStatus status, Pageable pageable) {
         logger.info("getOnboardRequests called with agencyId='{}', status='{}'", agencyId, status);
-        if (status != null) {
-            return entityOnboardRepository.findAllByAgencyIdAndStatus(agencyId, status, pageable);
+
+        boolean isSAdmin = agencyId == null || agencyId.isBlank();
+
+        if (isSAdmin) {
+            // Platform-wide: return all requests (or filtered by status only)
+            return status != null
+                    ? entityOnboardRepository.findAllByStatus(status, pageable)
+                    : entityOnboardRepository.findAll(pageable);
         }
-        return entityOnboardRepository.findAllByAgencyId(agencyId, pageable);
+
+        // Agency-scoped (nAdmin)
+        return status != null
+                ? entityOnboardRepository.findAllByAgencyIdAndStatus(agencyId, status, pageable)
+                : entityOnboardRepository.findAllByAgencyId(agencyId, pageable);
     }
 
     /**
@@ -129,7 +141,7 @@ public class OnboardService {
                 onboard.setReviewedAt(Instant.now());
                 entityOnboardRepository.save(onboard);
 
-                // Provision coordinator with the serve userId passed from UI
+                // Provision coordinator with the RC userId passed from the UI/orchestration layer
                 provisionCoordinator(onboard, reviewRequest.getUserId());
                 break;
 
@@ -187,14 +199,14 @@ public class OnboardService {
     /**
      * Provision the coordinator on authorisation.
      * This service only handles its own domain:
-     * 1. Create UserMapping (nCoordinator → entity) using the serve osid
-     * 2. Mark entity as Active
+     *   1. Create UserMapping (nCoordinator → entity) using the RC userId
+     *   2. Mark entity as Active
      *
-     * Keycloak user creation and serve-volunteering User/UserProfile creation
-     * are handled by the UI/orchestration layer before calling this endpoint.
+     * Keycloak user creation and RC UserProfile creation are handled by the
+     * volunteering service / UI orchestration layer before calling this endpoint.
      *
-     * @param onboard The authorised onboard request
-     * @param userId  The serve osid (from RC/volunteering), passed by the UI
+     * @param onboard  The authorised onboard request
+     * @param userId   The RC user osid, passed by the UI after it has created the user
      */
     private void provisionCoordinator(EntityOnboard onboard, String userId) {
         try {
@@ -219,7 +231,7 @@ public class OnboardService {
                     onboard.getId(), onboard.getEntityId(), userId);
 
         } catch (Exception e) {
-            logger.error("Error provisioning coordinator for onboard request: " + onboard.getId(), e);
+            logger.error("Error provisioning coordinator for onboard request: {}", onboard.getId(), e);
             throw new RuntimeException("Error provisioning coordinator", e);
         }
     }
